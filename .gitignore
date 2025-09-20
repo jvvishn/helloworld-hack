@@ -32,3 +32,15 @@ __pycache__/
 
 # VS Code Settings - Personal editor settings
 .vscode/
+
+node_modules/
+.env
+logs/*.log
+uploads/*
+!uploads/.gitkeep
+.DS_Store
+*.log
+.nyc_output
+coverage/
+dist/
+serviceAccountKey.json
