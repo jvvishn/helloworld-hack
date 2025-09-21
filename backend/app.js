@@ -47,6 +47,7 @@ app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/users', require('./src/routes/users'));
 app.use('/api/groups', require('./src/routes/groups'));
 app.use('/api/scheduling', require('./src/routes/scheduling'));
+app.use('/api/ai', require('./src/routes/ai'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
