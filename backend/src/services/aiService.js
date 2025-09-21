@@ -50,6 +50,8 @@ class AIService {
 
   // This function calls Amy's API to find the optimal meeting time.
   async findOptimalTime(data) {
+    console.log("Connecting to AI Service at:", process.env.AI_API_URL);
+    
     try {
       if (!AI_API_URL) throw new Error('AI_API_URL environment variable is not set.');
       const response = await axios.post(`${AI_API_URL}/find_time_enhanced`, data);
