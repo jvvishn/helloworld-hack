@@ -8,38 +8,57 @@ class ScheduleService {
 
   // Save manual schedule
   async saveManualSchedule(manualSchedule) {
+    console.log('Saving manual schedule:', manualSchedule);
+    
+    // ALWAYS save locally first - this should never fail
     try {
-      // Save to backend first
-      await this.saveScheduleToBackend(manualSchedule, 'manual');
-      
-      // Save locally for immediate UI updates
       localStorage.setItem('userSchedule', JSON.stringify(manualSchedule));
       localStorage.setItem('scheduleSource', 'manual');
-      
-      return {
-        schedule: manualSchedule,
-        source: 'manual'
-      };
-    } catch (error) {
-      console.error('Failed to save manual schedule:', error);
-      throw new Error('Failed to save schedule');
+      console.log('Schedule saved locally successfully');
+    } catch (localError) {
+      console.error('Failed to save locally:', localError);
+      throw new Error(`Failed to save schedule locally: ${localError.message}`);
     }
+    
+    // Try to save to backend, but don't let it fail the whole operation
+    let backendSaved = false;
+    try {
+      await this.saveScheduleToBackend(manualSchedule, 'manual');
+      backendSaved = true;
+      console.log('Successfully saved to backend as well');
+    } catch (backendError) {
+      console.warn('Backend save failed (continuing with local save only):', backendError.message);
+      // Don't throw - local save already succeeded
+    }
+    
+    return {
+      schedule: manualSchedule,
+      source: 'manual',
+      backendSaved
+    };
   }
 
   // Save schedule to backend
   async saveScheduleToBackend(schedule, source) {
-    const userId = this.getCurrentUserId();
-    const transformedSchedule = this.transformScheduleForAlgorithm(schedule, userId);
-    
-    const scheduleData = {
-      userId: userId,
-      schedule: transformedSchedule,
-      rawSchedule: schedule,
-      source: source,
-      preferences: this.getUserPreferences()
-    };
+    try {
+      const userId = this.getCurrentUserId();
+      const transformedSchedule = this.transformScheduleForAlgorithm(schedule, userId);
+      
+      const scheduleData = {
+        userId: userId,
+        schedule: transformedSchedule,
+        rawSchedule: schedule,
+        source: source,
+        preferences: this.getUserPreferences()
+      };
 
-    return await apiService.saveSchedule(scheduleData);
+      console.log('Attempting to save to backend:', scheduleData);
+      return await apiService.saveSchedule(scheduleData);
+    } catch (error) {
+      console.warn('Backend save failed, continuing with local save:', error.message);
+      // Don't throw the error - let the calling function handle it
+      return null;
+    }
   }
 
   // Get current user schedule (check backend first, then local)

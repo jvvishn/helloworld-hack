@@ -21,10 +21,10 @@ const Header = ({ user, onLogout }) => {
           <div className="flex items-center">
             <Link to="/" className="flex items-center" onClick={closeMenu}>
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">SG</span>
+                <span className="text-white font-bold text-sm">SB</span>
               </div>
               <span className="ml-2 text-lg sm:text-xl font-semibold text-gray-900">
-                StudyGroup
+                StudyBuddy
               </span>
             </Link>
           </div>
