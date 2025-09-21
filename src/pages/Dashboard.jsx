@@ -12,6 +12,7 @@ import ScheduleSetup from "../components/Schedule/ScheduleSetup";
 import scheduleService from "../services/scheduleService";
 import { useNotification } from "../contexts/NotificationContext";
 import ChecklistView from "../components/Checklist/ChecklistView";
+import groupMatchingService from '../services/groupMatchingService';
 
 const Dashboard = ({ user }) => {
   const [showWelcome, setShowWelcome] = useState(false);
@@ -20,7 +21,7 @@ const Dashboard = ({ user }) => {
   const [scheduleSource, setScheduleSource] = useState("none");
 
   const dashboardTutorial = useTutorial("dashboard");
-  const { showSuccess } = useNotification();
+  const { showSuccess, showError } = useNotification();
 
   // Check if user needs onboarding
   useEffect(() => {
@@ -57,6 +58,17 @@ const Dashboard = ({ user }) => {
     setScheduleSource(scheduleService.getUserSchedule().source);
     setShowScheduleSetup(false);
     showSuccess("Schedule saved! Now you can find compatible study groups.");
+  };
+
+  // Find study partners function
+  const findStudyPartners = async () => {
+    try {
+      const partners = await groupMatchingService.findCompatibleStudents(user.id);
+      // Display partners in a modal or navigate to a partners page
+      console.log('Found study partners:', partners);
+    } catch (error) {
+      showError('Failed to find study partners');
+    }
   };
 
   // Tutorial steps for dashboard
@@ -121,6 +133,7 @@ const Dashboard = ({ user }) => {
             </button>
           </div>
         </div>
+
         {/* Schedule Status */}
         <div data-tutorial="schedule">
           {userSchedule ? (
@@ -141,9 +154,7 @@ const Dashboard = ({ user }) => {
                     />
                   </svg>
                   <span className="text-green-800 font-medium">
-                    Schedule connected (
-                    {scheduleSource === "google" ? "Google Calendar" : "Manual"}
-                    )
+                    Schedule connected (Manual)
                   </span>
                   <span className="text-green-600">
                     - {userSchedule.classes?.length || 0} classes tracked
@@ -186,6 +197,7 @@ const Dashboard = ({ user }) => {
             </div>
           )}
         </div>
+
         {/* Quick Stats */}
         <div
           className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6"
@@ -232,6 +244,7 @@ const Dashboard = ({ user }) => {
             </div>
           </Card>
         </div>
+
         {/* Main Content */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
           {/* My Groups */}
@@ -338,7 +351,8 @@ const Dashboard = ({ user }) => {
           </Card>
         </div>
 
-        <Card className="p-6">
+        {/* Quick Actions */}
+        <Card className="p-6" data-tutorial="actions">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Quick Actions
           </h3>
@@ -541,6 +555,13 @@ const Dashboard = ({ user }) => {
                 CS 101 Group Chat
               </Button>
             </Link>
+            <Button 
+              variant="outline" 
+              size="medium"
+              onClick={findStudyPartners}
+            >
+              Find Study Partners
+            </Button>
           </div>
         </div>
       </div>
