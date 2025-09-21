@@ -432,4 +432,8 @@ def handle_file_upload():
         })
 
 if __name__ == '__main__':
+<<<<<<< HEAD
     app.run(debug=True)
+=======
+    app.run(debug=True)
+>>>>>>> d3534fca834af440ad0b3da77c9a0d1790e3c3b0
