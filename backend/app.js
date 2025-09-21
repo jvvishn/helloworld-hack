@@ -15,7 +15,7 @@ const server = http.createServer(app);
 // Socket.io setup
 const io = socketIo(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: [process.env.FRONTEND_URL, "http://localhost:3000"],
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -28,11 +28,15 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// CORS configuration
+// --- MODIFIED CORS CONFIGURATION ---
+// This section has been updated to be more specific
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
-  credentials: true
+  origin: [process.env.FRONTEND_URL, 'http://localhost:3000'],
+  credentials: true,
+  methods: "GET,POST,PUT,DELETE,PATCH,OPTIONS", // Explicitly allows these methods
+  allowedHeaders: "Content-Type,Authorization" // Explicitly allows these headers
 }));
+// ------------------------------------
 
 // Rate limiting
 const limiter = rateLimit({
@@ -47,11 +51,10 @@ app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/users', require('./src/routes/users'));
 app.use('/api/groups', require('./src/routes/groups'));
 app.use('/api/scheduling', require('./src/routes/scheduling'));
-app.use('/api/ai', require('./src/routes/ai'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'OK',
     service: 'Study Group Backend',
     timestamp: new Date().toISOString(),
@@ -85,13 +88,10 @@ io.on('connection', (socket) => {
 const errorHandler = require('./src/middleware/errorHandler');
 app.use(errorHandler);
 
-// ---------------------------------------------
-// FIX: This section was changed to a standard Express 404 handler.
-// The old line 'app.use('*', ...)' caused the 'PathError'.
+// 404 handler for routes not found
 app.use((req, res, next) => {
   res.status(404).json({ message: 'Route not found' });
 });
-// ---------------------------------------------
 
 const PORT = process.env.PORT || 4000;
 
