@@ -1,127 +1,67 @@
-// Schedule management and Google Calendar integration
+// src/services/scheduleService.js
+import apiService from './apiService';
+
 class ScheduleService {
   constructor() {
-    this.googleCalendarLoaded = false;
-  }
-
-  // Initialize Google Calendar API
-  async initGoogleCalendar() {
-    return new Promise((resolve, reject) => {
-      if (window.gapi) {
-        window.gapi.load('client:auth2', async () => {
-          try {
-            await window.gapi.client.init({
-              apiKey: process.env.REACT_APP_GOOGLE_API_KEY,
-              clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID,
-              discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
-              scope: 'https://www.googleapis.com/auth/calendar.readonly'
-            });
-            this.googleCalendarLoaded = true;
-            resolve();
-          } catch (error) {
-            reject(error);
-          }
-        });
-      } else {
-        reject(new Error('Google API not loaded'));
-      }
-    });
-  }
-
-  // Connect to Google Calendar
-  async connectGoogleCalendar() {
-    try {
-      if (!this.googleCalendarLoaded) {
-        await this.initGoogleCalendar();
-      }
-
-      const authInstance = window.gapi.auth2.getAuthInstance();
-      const user = await authInstance.signIn();
-      
-      const events = await this.fetchCalendarEvents();
-      const schedule = this.parseEventsToSchedule(events);
-      
-      localStorage.setItem('userSchedule', JSON.stringify(schedule));
-      localStorage.setItem('scheduleSource', 'google');
-      
-      return { success: true, schedule };
-    } catch (error) {
-      console.error('Google Calendar connection failed:', error);
-      throw new Error('Failed to connect to Google Calendar');
-    }
-  }
-
-  // Fetch events from Google Calendar
-  async fetchCalendarEvents() {
-    const now = new Date();
-    const oneMonthLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-    const response = await window.gapi.client.calendar.events.list({
-      calendarId: 'primary',
-      timeMin: now.toISOString(),
-      timeMax: oneMonthLater.toISOString(),
-      showDeleted: false,
-      singleEvents: true,
-      orderBy: 'startTime'
-    });
-
-    return response.result.items || [];
-  }
-
-  // Parse calendar events into our schedule format
-  parseEventsToSchedule(events) {
-    const schedule = {
-      weeklySchedule: {},
-      classes: [],
-      busyTimes: []
-    };
-
-    events.forEach(event => {
-      if (!event.start || !event.start.dateTime) return;
-
-      const startTime = new Date(event.start.dateTime);
-      const endTime = new Date(event.end.dateTime);
-      const dayOfWeek = startTime.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-
-      // Check if it's a recurring class (simple heuristic)
-      const isClass = event.summary && (
-        event.summary.toLowerCase().includes('class') ||
-        event.summary.toLowerCase().includes('lecture') ||
-        event.summary.toLowerCase().includes('lab') ||
-        /^[A-Z]{2,4}\s?\d{3}/.test(event.summary) // Course code pattern
-      );
-
-      if (isClass) {
-        schedule.classes.push({
-          title: event.summary,
-          startTime: startTime.toTimeString().slice(0, 5),
-          endTime: endTime.toTimeString().slice(0, 5),
-          dayOfWeek,
-          location: event.location || '',
-          description: event.description || ''
-        });
-      }
-
-      schedule.busyTimes.push({
-        title: event.summary,
-        start: startTime,
-        end: endTime,
-        dayOfWeek
-      });
-    });
-
-    return schedule;
+    // No Google Calendar initialization needed
   }
 
   // Save manual schedule
-  saveManualSchedule(scheduleData) {
-    localStorage.setItem('userSchedule', JSON.stringify(scheduleData));
-    localStorage.setItem('scheduleSource', 'manual');
-    return { success: true, schedule: scheduleData };
+  async saveManualSchedule(manualSchedule) {
+    try {
+      // Save to backend first
+      await this.saveScheduleToBackend(manualSchedule, 'manual');
+      
+      // Save locally for immediate UI updates
+      localStorage.setItem('userSchedule', JSON.stringify(manualSchedule));
+      localStorage.setItem('scheduleSource', 'manual');
+      
+      return {
+        schedule: manualSchedule,
+        source: 'manual'
+      };
+    } catch (error) {
+      console.error('Failed to save manual schedule:', error);
+      throw new Error('Failed to save schedule');
+    }
   }
 
-  // Get current user schedule
-  getUserSchedule() {
+  // Save schedule to backend
+  async saveScheduleToBackend(schedule, source) {
+    const userId = this.getCurrentUserId();
+    const transformedSchedule = this.transformScheduleForAlgorithm(schedule, userId);
+    
+    const scheduleData = {
+      userId: userId,
+      schedule: transformedSchedule,
+      rawSchedule: schedule,
+      source: source,
+      preferences: this.getUserPreferences()
+    };
+
+    return await apiService.saveSchedule(scheduleData);
+  }
+
+  // Get current user schedule (check backend first, then local)
+  async getUserSchedule(forceRefresh = false) {
+    if (forceRefresh) {
+      try {
+        const backendSchedule = await apiService.getSchedule();
+        if (backendSchedule) {
+          // Update local storage with backend data
+          localStorage.setItem('userSchedule', JSON.stringify(backendSchedule.rawSchedule));
+          localStorage.setItem('scheduleSource', backendSchedule.source);
+          return {
+            schedule: backendSchedule.rawSchedule,
+            source: backendSchedule.source
+          };
+        }
+      } catch (error) {
+        console.warn('Failed to fetch schedule from backend, using local:', error);
+      }
+    }
+
+    // Fallback to local storage
     const schedule = localStorage.getItem('userSchedule');
     const source = localStorage.getItem('scheduleSource');
     
@@ -161,7 +101,19 @@ class ScheduleService {
   }
 
   // Find common available times for multiple users
-  findCommonAvailableTime(userSchedules, duration = 60) {
+  async findCommonAvailableTime(userIds, duration = 60) {
+    try {
+      // Use the algorithm service through API
+      return await apiService.getOptimalTimes(userIds, duration);
+    } catch (error) {
+      console.error('Failed to find common times:', error);
+      // Fallback to local calculation
+      return this.findCommonAvailableTimeLocal(userIds, duration);
+    }
+  }
+
+  // Local fallback for finding common times
+  findCommonAvailableTimeLocal(userSchedules, duration = 60) {
     const commonTimes = [];
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     
@@ -186,6 +138,223 @@ class ScheduleService {
     });
 
     return commonTimes;
+  }
+
+  // Transform schedule for algorithm
+  transformScheduleForAlgorithm(schedule, userId) {
+    const scheduleEntries = [];
+    
+    if (!schedule.classes) return scheduleEntries;
+    
+    schedule.classes.forEach(classItem => {
+      // Convert day of week and time to full datetime
+      const dayMap = {
+        'monday': 1, 'tuesday': 2, 'wednesday': 3, 
+        'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
+      };
+      
+      // Get next occurrence of this day
+      const today = new Date();
+      const targetDay = dayMap[classItem.dayOfWeek.toLowerCase()];
+      const daysUntilTarget = (targetDay + 7 - today.getDay()) % 7;
+      const targetDate = new Date(today);
+      targetDate.setDate(today.getDate() + daysUntilTarget);
+      
+      // Create full datetime strings
+      const startDateTime = new Date(targetDate);
+      const [startHour, startMinute] = classItem.startTime.split(':');
+      startDateTime.setHours(parseInt(startHour), parseInt(startMinute), 0, 0);
+      
+      const endDateTime = new Date(targetDate);
+      const [endHour, endMinute] = classItem.endTime.split(':');
+      endDateTime.setHours(parseInt(endHour), parseInt(endMinute), 0, 0);
+      
+      scheduleEntries.push({
+        user_id: userId,
+        start: startDateTime.toISOString(),
+        end: endDateTime.toISOString(),
+        title: classItem.title,
+        location: classItem.location || '',
+        event_type: 'class'
+      });
+    });
+    
+    return scheduleEntries;
+  }
+
+  // Helper methods
+  getCurrentUserId() {
+    return localStorage.getItem('userId') || 
+           JSON.parse(localStorage.getItem('user') || '{}').id ||
+           'temp-user-' + Date.now();
+  }
+
+  getUserPreferences() {
+    return JSON.parse(localStorage.getItem('userPreferences') || '{}');
+  }
+
+  getAuthToken() {
+    return localStorage.getItem('token') || localStorage.getItem('authToken') || '';
+  }
+
+  // Sync with backend
+  async syncWithBackend() {
+    try {
+      const backendData = await this.getUserSchedule(true);
+      return backendData;
+    } catch (error) {
+      console.error('Failed to sync with backend:', error);
+      throw error;
+    }
+  }
+
+  // Import from file (.ics calendar files)
+  async importFromFile(file) {
+    try {
+      if (file.name.endsWith('.ics')) {
+        return await this.parseICSFile(file);
+      } else {
+        throw new Error('Unsupported file format. Please use .ics files.');
+      }
+    } catch (error) {
+      console.error('Failed to import from file:', error);
+      throw error;
+    }
+  }
+
+  // Improved ICS parser
+  async parseICSFile(file) {
+    const text = await file.text();
+    const lines = text.split(/\r?\n/); // Handle different line endings
+    const events = [];
+    let currentEvent = null;
+
+    console.log('Parsing ICS file with', lines.length, 'lines');
+
+    lines.forEach((line, index) => {
+      line = line.trim();
+      
+      if (line === 'BEGIN:VEVENT') {
+        currentEvent = {};
+      } else if (line === 'END:VEVENT' && currentEvent) {
+        if (currentEvent.summary && currentEvent.dtstart && currentEvent.dtend) {
+          events.push(currentEvent);
+        }
+        currentEvent = null;
+      } else if (currentEvent && line.includes(':')) {
+        // Handle different ICS formats
+        if (line.startsWith('SUMMARY:')) {
+          currentEvent.summary = line.substring(8);
+        } else if (line.startsWith('DTSTART') && line.includes(':')) {
+          // Handle DTSTART:20240115T090000Z or DTSTART;VALUE=DATE:20240115
+          const colonIndex = line.indexOf(':');
+          currentEvent.dtstart = line.substring(colonIndex + 1);
+        } else if (line.startsWith('DTEND') && line.includes(':')) {
+          const colonIndex = line.indexOf(':');
+          currentEvent.dtend = line.substring(colonIndex + 1);
+        } else if (line.startsWith('LOCATION:')) {
+          currentEvent.location = line.substring(9);
+        } else if (line.startsWith('DESCRIPTION:')) {
+          currentEvent.description = line.substring(12);
+        }
+      }
+    });
+
+    console.log('Found', events.length, 'events in ICS file');
+
+    // Convert to our schedule format
+    const schedule = {
+      classes: [],
+      busyTimes: []
+    };
+
+    events.forEach((event, index) => {
+      try {
+        let startDate, endDate;
+
+        // Parse different date formats
+        if (event.dtstart.includes('T')) {
+          // Format: 20240115T090000Z or 20240115T090000
+          startDate = this.parseICSDateTime(event.dtstart);
+          endDate = this.parseICSDateTime(event.dtend);
+        } else {
+          // All-day event format: 20240115
+          const year = event.dtstart.substring(0, 4);
+          const month = event.dtstart.substring(4, 6);
+          const day = event.dtstart.substring(6, 8);
+          startDate = new Date(year, month - 1, day, 9, 0); // Default to 9 AM
+          endDate = new Date(year, month - 1, day, 10, 0); // Default 1 hour duration
+        }
+        
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          console.warn('Invalid date for event:', event.summary);
+          return;
+        }
+
+        const dayOfWeek = startDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+        
+        // More comprehensive class detection
+        const isClass = event.summary && (
+          event.summary.toLowerCase().includes('class') ||
+          event.summary.toLowerCase().includes('lecture') ||
+          event.summary.toLowerCase().includes('lab') ||
+          event.summary.toLowerCase().includes('seminar') ||
+          event.summary.toLowerCase().includes('tutorial') ||
+          /^[A-Z]{2,4}\s?\d{3}/.test(event.summary) || // Course code pattern
+          /\b(CS|MATH|PHYS|ENG|BIO|CHEM|HIST|ECON)\s?\d/.test(event.summary) // Common course prefixes
+        );
+
+        if (isClass || events.length <= 20) { // If few events, include all as potential classes
+          schedule.classes.push({
+            id: Date.now() + index, // Add unique ID
+            title: event.summary,
+            startTime: startDate.toTimeString().slice(0, 5),
+            endTime: endDate.toTimeString().slice(0, 5),
+            dayOfWeek,
+            location: event.location || '',
+            description: event.description || ''
+          });
+        }
+
+        schedule.busyTimes.push({
+          title: event.summary,
+          start: startDate,
+          end: endDate,
+          dayOfWeek
+        });
+      } catch (error) {
+        console.warn('Error parsing event:', event.summary, error);
+      }
+    });
+
+    console.log('Converted to', schedule.classes.length, 'classes');
+    return schedule;
+  }
+
+  // Helper function to parse ICS datetime format
+  parseICSDateTime(dateTimeStr) {
+    // Remove timezone info for simplicity
+    const cleanStr = dateTimeStr.replace(/Z$/, '').replace(/\+.*$/, '');
+    
+    if (cleanStr.length >= 15) {
+      // Format: 20240115T090000
+      const year = cleanStr.substring(0, 4);
+      const month = cleanStr.substring(4, 6);
+      const day = cleanStr.substring(6, 8);
+      const hour = cleanStr.substring(9, 11);
+      const minute = cleanStr.substring(11, 13);
+      
+      return new Date(year, month - 1, day, hour, minute);
+    } else if (cleanStr.length === 8) {
+      // All-day format: 20240115
+      const year = cleanStr.substring(0, 4);
+      const month = cleanStr.substring(4, 6);
+      const day = cleanStr.substring(6, 8);
+      
+      return new Date(year, month - 1, day, 9, 0); // Default to 9 AM
+    } else {
+      throw new Error('Unknown date format: ' + dateTimeStr);
+    }
   }
 }
 
