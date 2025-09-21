@@ -1,4 +1,3 @@
-// BEGIN FILE: api.md
 # Study Group Orchestrator API Documentation
 
 ## Base URL
@@ -26,7 +25,7 @@ All protected endpoints require a `Bearer` token in the `Authorization` header:
 
 ## Group Management
 
-- `GET /groups` - Get a list of all groups.
+- `GET /groups` - Get a list of all groups (Public).
 - `GET /groups/:id` - Get details for a specific group.
 - `POST /groups` - Create a new group (Protected).
   - **Body:** `{ "name": "...", "subject": "...", "maxMembers": "..." }`
@@ -39,6 +38,7 @@ All protected endpoints require a `Bearer` token in the `Authorization` header:
 - `PUT /scheduling/user` - Update the authenticated user's schedule (Protected).
 - `POST /scheduling/find-optimal-time` - Find optimal meeting times for a group (Protected).
   - **Body:** `{ "groupId": "..." }`
-- `POST /scheduling/generate-materials` - Generate study materials from notes (Protected).
-  - **Body:** `{ "lectureNotes": "...", "format": "quiz" }`
-// END FILE: api.md
+- `POST /scheduling/upload-material` - Upload lecture materials to the AI service (Protected).
+  - **Body:** `form-data` with a `file` field.
+- `POST /scheduling/generate-quiz` - Generate a quiz from uploaded material (Protected).
+  - **Body:** `{ "materialId": "..." }`

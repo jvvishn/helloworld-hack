@@ -1,10 +1,11 @@
-// BEGIN FILE: scheduling.js
 const express = require('express');
 const { authenticateToken } = require('../middleware/auth');
 const schedulingController = require('../controllers/schedulingController');
 const { body, validationResult } = require('express-validator');
+const multer = require('multer');
 
 const router = express.Router();
+const upload = multer({ dest: 'uploads/' });
 
 // Validation
 const validateScheduleUpdate = [
@@ -15,9 +16,8 @@ const validateFindOptimalTime = [
   body('groupId').notEmpty().withMessage('Group ID is required'),
 ];
 
-const validateGenerateMaterials = [
-  body('lectureNotes').notEmpty().withMessage('Lecture notes text is required'),
-  body('format').isIn(['quiz', 'flashcards', 'summary']).withMessage('Invalid format'),
+const validateGenerateQuiz = [
+  body('materialId').notEmpty().withMessage('Material ID is required'),
 ];
 
 // Check validation
@@ -31,7 +31,11 @@ const checkValidation = (req, res, next) => {
 router.get('/user', authenticateToken, schedulingController.getUserSchedule);
 router.put('/user', authenticateToken, validateScheduleUpdate, checkValidation, schedulingController.updateUserSchedule);
 router.post('/find-optimal-time', authenticateToken, validateFindOptimalTime, checkValidation, schedulingController.findOptimalTime);
-router.post('/generate-materials', authenticateToken, validateGenerateMaterials, checkValidation, schedulingController.generateStudyMaterials);
+
+// New endpoint for file uploads
+router.post('/upload-material', authenticateToken, upload.single('file'), schedulingController.uploadMaterial);
+
+// New endpoint for quiz generation
+router.post('/generate-quiz', authenticateToken, validateGenerateQuiz, checkValidation, schedulingController.generateQuiz);
 
 module.exports = router;
-// END FILE: scheduling.js

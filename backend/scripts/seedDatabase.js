@@ -1,5 +1,4 @@
-// BEGIN FILE: seedDatabase.js
-const { db, auth } = require('../src/config/firebase');
+const { db, auth, admin } = require('../src/config/firebase');
 const { faker } = require('@faker-js/faker');
 
 const seedUsers = async (count = 5) => {
@@ -7,14 +6,14 @@ const seedUsers = async (count = 5) => {
   const users = [];
   for (let i = 0; i < count; i++) {
     const email = faker.internet.email();
-    const password = faker.internet.password();
+    const password = 'password123';
     const name = faker.person.fullName();
 
+    console.log(`Created user: ${name}, Email: ${email}, Password: ${password}`);
+
     try {
-    // Create a user in Firebase Auth
       const userRecord = await auth.createUser({ email, password, displayName: name });
       
-      // Store extra profile data in Firestore
       await db.collection('users').doc(userRecord.uid).set({
         name,
         email,
@@ -23,16 +22,19 @@ const seedUsers = async (count = 5) => {
           learningStyle: faker.helpers.arrayElement(['Visual', 'Auditory', 'Kinesthetic']),
           subjects: faker.helpers.arrayElements(['CS 301', 'MA 261', 'PHYS 241', 'ENGL 106'], { min: 1, max: 3 }),
           schedule: {
-            // Mocking some busy times
-            Monday: [{ start: '09:00', end: '10:00' }],
-            Tuesday: [{ start: '13:00', end: '14:00' }],
-            Wednesday: [{ start: '10:00', end: '11:00' }],
+            Monday: [{ start: '09:00:00', end: '10:00:00' }],
+            Tuesday: [{ start: '13:00:00', end: '14:00:00' }],
+            Wednesday: [{ start: '10:00:00', end: '11:00:00' }],
           },
           preferences: {},
+          dayPreferences: [0, 1, 2, 3, 4], // 0-4 for Monday-Friday
+          classLocations: [
+            { location: 'LWSN B146', day: 'Monday', end_time: '10:00' },
+            { location: 'MATH G008', day: 'Monday', end_time: '11:00' }
+          ]
         }
       });
       users.push({ uid: userRecord.uid, name, email });
-      console.log(`Created user: ${name}`);
     } catch (error) {
       console.error(`Failed to create user ${email}:`, error.message);
     }
@@ -49,26 +51,24 @@ const seedGroups = async (users) => {
 
   const groupsCollection = db.collection('groups');
   
-  // Create a small group with a few members
   const group1Members = users.slice(0, 2).map(u => u.uid);
   const group1 = {
     name: 'Hackathon Wizards',
     subject: 'AI/ML',
     members: group1Members,
     createdBy: group1Members[0],
-    createdAt: new Date()
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
   };
   await groupsCollection.add(group1);
   console.log('Created group: Hackathon Wizards');
 
-  // Create a larger group
   const group2Members = users.slice(2, 5).map(u => u.uid);
   const group2 = {
     name: 'Physics Study Crew',
     subject: 'PHYS 241',
     members: group2Members,
     createdBy: group2Members[0],
-    createdAt: new Date()
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
   };
   await groupsCollection.add(group2);
   console.log('Created group: Physics Study Crew');
@@ -77,7 +77,6 @@ const seedGroups = async (users) => {
 };
 
 const runSeed = async () => {
-  // Make sure the faker library is installed first!
   try {
     const users = await seedUsers();
     await seedGroups(users);
@@ -88,4 +87,3 @@ const runSeed = async () => {
 };
 
 runSeed();
-// END FILE: seedDatabase.js

@@ -24,6 +24,7 @@ const checkValidation = (req, res, next) => {
 };
 
 // Routes
+// This route is now public and does not require an access token.
 router.get('/', groupController.getAllGroups);
 router.get('/:id', validateGroupId, checkValidation, groupController.getGroupById);
 router.post('/', authenticateToken, validateGroupCreation, checkValidation, groupController.createGroup);

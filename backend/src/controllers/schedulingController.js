@@ -1,7 +1,7 @@
-// BEGIN FILE: schedulingController.js
 const User = require('../models/User');
 const Group = require('../models/Group');
 const aiService = require('../services/aiService');
+const fs = require('fs');
 
 class SchedulingController {
   async getUserSchedule(req, res) {
@@ -19,7 +19,6 @@ class SchedulingController {
     try {
       const user = await User.findById(req.user.uid);
       if (!user) return res.status(404).json({ message: 'User not found' });
-
       await user.updateProfile({ schedule: req.body.schedule });
       res.json({ success: true, schedule: user.profile.schedule });
     } catch (error) {
@@ -27,58 +26,90 @@ class SchedulingController {
       res.status(500).json({ message: error.message });
     }
   }
-  
+
   // Find optimal time for a group
   async findOptimalTime(req, res) {
     try {
       const { groupId } = req.body;
-      
-      // 1. Get the group and its members
       const group = await Group.findById(groupId);
       if (!group) return res.status(404).json({ message: 'Group not found' });
 
-      // 2. Fetch all members' schedules from Firestore
+      // Fetch all members' schedules and enhanced data from Firestore
       const memberSchedules = {};
+      const dayPreferences = {};
+      const userLocations = {};
+
       for (const memberId of group.members) {
         const user = await User.findById(memberId);
-        if (user && user.profile.schedule) {
-          memberSchedules[memberId] = user.profile.schedule;
+        if (user) {
+          memberSchedules[user.uid] = user.profile.schedule || {};
+          dayPreferences[user.uid] = user.profile.dayPreferences || [];
+          userLocations[user.uid] = user.profile.classLocations || [];
         }
       }
 
-      // 3. Send the schedules to Amy's AI service
-      const optimalTimes = await aiService.findOptimalTime({
-        users: group.members,
-        schedules: memberSchedules
-      });
+      // Prepare and send the complete data to Amy's AI service
+      const requestData = {
+          users: group.members,
+          schedules: memberSchedules,
+          day_preferences: dayPreferences,
+          user_locations: userLocations,
+          meeting_duration_minutes: 60,
+          search_range: {
+              start: "2025-09-22T09:00:00",
+              end: "2025-09-22T18:00:00"
+          }
+      };
+      
+      const optimalTimes = await aiService.findOptimalTime(requestData);
 
       res.json({ success: true, optimalTimes });
-
     } catch (error) {
       console.error('Error finding optimal time:', error);
       res.status(500).json({ message: error.message });
     }
   }
 
-  // Generate study materials using the Gemini API
-  async generateStudyMaterials(req, res) {
+  // New function to handle file upload
+  async uploadMaterial(req, res) {
     try {
-      const { lectureNotes, format } = req.body;
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded.' });
+      }
 
-      // Send lecture notes to Amy's AI service
-      const generatedMaterials = await aiService.generateStudyMaterials({
-        lectureNotes,
-        format
+      // Send the file to Amy's AI service
+      const response = await aiService.uploadMaterial(req.file);
+      
+      // Respond to the frontend with the material ID from Amy's service
+      res.json({
+        success: true,
+        message: 'File uploaded successfully',
+        materialId: response.id // Get the ID from Amy's response
       });
-
-      res.json({ success: true, materials: generatedMaterials });
-
     } catch (error) {
-      console.error('Error generating study materials:', error);
+      console.error('Error uploading material:', error.message);
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  // New function to generate a quiz
+  async generateQuiz(req, res) {
+    try {
+      const { materialId } = req.body;
+      
+      // Send the material ID to Amy's AI service to generate the quiz
+      const quizData = await aiService.generateQuiz(materialId);
+
+      // Respond to the frontend with the generated quiz
+      res.json({
+        success: true,
+        quiz: quizData.data // Amy's service returns the quiz in 'data'
+      });
+    } catch (error) {
+      console.error('Error generating quiz:', error.message);
       res.status(500).json({ message: error.message });
     }
   }
 }
 
 module.exports = new SchedulingController();
-// END FILE: schedulingController.js
